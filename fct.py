@@ -24,8 +24,9 @@ def resolution_EDP_ordre_1(N,S,Deff,R,Ce):
     B[-1] = Ce
     
     #à r=0
-    A[0,0] = -1
-    A[0,1] =  1
+    A[0,0] = -3
+    A[0,1] =  4
+    A[0,2] = -1
     B[0] = 0
     
     #domaine
@@ -55,9 +56,9 @@ def resolution_EDP_ordre_2(N,S,Deff,R,Ce):
     B[-1] = Ce
     
     #à r=0
-    A[0,0] = -1
-    A[0,1] =  1
-    B[0] = 0
+    A[0,0] = -3
+    A[0,1] =  4
+    A[0,2] =  -1
     
     #domaine
     ri = dr
@@ -85,7 +86,7 @@ R = 0.5
 #solution numérique
 C = resolution_EDP_ordre_1(N,S,Deff,R,Ce)
 dr = R/(N-1)
-r = np.arange(0,R+dr,dr)
+r = np.linspace(0,R,N)
 
 #solution analytique
 ra = np.linspace(0,R,200)
@@ -103,7 +104,7 @@ plt.show()
 
 
 #graph norme erreur et ordre de convergence
-Ne = [5, 10, 15, 20, 25]
+Ne = [5, 25, 100, 150, 300]
 
 L1 = np.zeros(len(Ne))
 L2 = np.zeros(len(Ne))
@@ -116,7 +117,6 @@ for i in range(len(Ne)):
     DR[i] = R/(Ne[i]-1) 
     C = resolution_EDP_ordre_1(Ne[i],S,Deff,R,Ce)
     
-    dr = R/(Ne[i]-1)
     r = np.linspace(0,R,Ne[i])
     Ca = 1/4*S/Deff*R**2*(r**2/R**2-1) + Ce
     
@@ -125,9 +125,11 @@ for i in range(len(Ne)):
         L2[i]+=1/Ne[i]*abs(C[k]-Ca[k])**2
     L2[i] = np.sqrt(L2[i])
     Linf[i] =  max(abs(C-Ca))
- 
-p = np.log(L2[-1]/L2[0])/np.log(DR[-1]/DR[0])
-print(f"l'odre de l'erreur avec la norme 2 est p = {p}")    
+
+
+p_L2 = np.log(L2[-1]/L2[-2])/np.log(DR[-1]/DR[-2])
+print(f"l'odre de l'erreur avec la norme L2 est p = {p_L2}")  
+
     
 plt.figure(figsize=(8, 6))  
 plt.loglog(DR, L1,'bo', label="Norme L1")
@@ -158,7 +160,7 @@ plt.show()
 C_2 = resolution_EDP_ordre_2(N,S,Deff,R,Ce)
 C_1= resolution_EDP_ordre_1(N,S,Deff,R,Ce)
 dr = R/(N-1)
-r = np.arange(0,R+dr,dr)
+r = np.linspace(0,R,N)
 
 #solution analytique
 ra = np.linspace(0,R,200)
@@ -177,7 +179,7 @@ plt.show()
 
 
 #graph erreur
-Ne = [5, 10, 15, 20, 25]
+Ne = [5, 25, 100, 150, 300]
 
 L1 = np.zeros(len(Ne))
 L2 = np.zeros(len(Ne))
@@ -200,8 +202,8 @@ for i in range(len(Ne)):
     L2[i] = np.sqrt(L2[i])
     Linf[i] =  max(abs(C-Ca))
     
-p = np.log(L2[-1]/L2[0])/np.log(DR[-1]/DR[0])
-print(f"l'odre de l'erreur avec la norme 2 est p = {p}")
+p = np.log(L2[-1]/L2[-2])/np.log(DR[-1]/DR[-2])
+print(f"l'odre de l'erreur avec la norme L2 est p = {p}")
 
 plt.figure(figsize=(8, 6))  
 plt.loglog(DR, L1,'bo', label="Norme L1")
