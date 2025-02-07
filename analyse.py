@@ -33,17 +33,17 @@ print(f"l'odre de l'erreur avec la norme L2 pour le schema d'ordre 2 est p = {p_
 ra, Ca = fct.sol_an(200, prm)
 
 # graph sol analytique et numérique pour l'ordre 1
-plt.plot(r, C_o1, "ro", label=f"solution numérique avec {N} points")
-plt.plot(ra, Ca, label="solution analytique")
+plt.plot(r, C_o1, "ro", label=f"Solution numérique avec {N} points")
+plt.plot(ra, Ca, label="Solution analytique")
 plt.xlabel("r [m]")
 plt.ylabel("concentration en sel [mol/m^3]")
-plt.title("Évolution de la concentration en sel selon la position radiale du cylindre")
+plt.title("Évolution de la concentration en sel selon la position radiale du cylindre \n schéma d'ordre 1")
 plt.grid("on")
 plt.legend()
 plt.show()
 
 # graph des normes L1 et L2 des erreurs pour l'ordre 1
-fct.graph_convergence(DR_o1, L1_o1, L2_o1, Linf_o1, " 1")
+fct.graph_convergence_polyfit(DR_o1, L1_o1, L2_o1, Linf_o1, " 1")
 
 # ------------partie E (même calcul avec un ordre 2)------------#
 

@@ -118,6 +118,62 @@ def ordre_convergence(schema, prm):
     return ordre_conv, L1, L2, DR, Linf
 
 
+# Appliquer une régression linéaire en log-log
+def fit_poly(x, y):
+    log_x, log_y = np.log10(x), np.log10(y)
+    coeffs = np.polyfit(log_x, log_y, 1)  # Régression linéaire
+    return coeffs  # coeffs[0] = pente, coeffs[1] = intercept
+
+def graph_convergence_polyfit(DR, L1, L2, Linf, titre_graph):
+    
+    sorted_indices = np.argsort(DR)
+    DR_sorted = np.array(DR)[sorted_indices]
+    L1_sorted = np.array(L1)[sorted_indices]
+    L2_sorted = np.array(L2)[sorted_indices]
+    Linf_sorted = np.array(Linf)[sorted_indices]
+    
+    # Sélection des 3 plus petits DR
+    DR_fit = DR_sorted[:3]  
+    L1_fit = L1_sorted[:3]
+    L2_fit = L2_sorted[:3]
+    Linf_fit = Linf_sorted[:3]
+    
+    # Calcul des régressions pour chaque norme
+    slope_L1, intercept_L1 = fit_poly(DR_fit, L1_fit)
+    slope_L2, intercept_L2 = fit_poly(DR_fit, L2_fit)
+    slope_Linf, intercept_Linf = fit_poly(DR_fit, Linf_fit)
+    
+    # Génération des lignes de tendance
+    DR_line = np.linspace(min(DR), max(DR), 100)  # Étend la ligne sur tout le graphe
+    L1_line = 10**(intercept_L1) * DR_line**slope_L1
+    L2_line = 10**(intercept_L2) * DR_line**slope_L2
+    Linf_line = 10**(intercept_Linf) * DR_line**slope_Linf
+    
+    # Création du graphique
+    plt.figure(figsize=(8, 6))
+    
+    # Points
+    plt.loglog(DR, L1, 'bo', label="Norme L1")
+    plt.loglog(DR, L2, 'ro', label="Norme L2")
+    plt.loglog(DR, Linf, 'yo', label="Norme Linf")
+    
+    # Lignes de tendance issues de la régression linéaire
+    plt.loglog(DR_line, L1_line, 'b--', linewidth=2, label="Régression L1")
+    plt.loglog(DR_line, L2_line, 'r--', linewidth=2, label="Régression L2")
+    plt.loglog(DR_line, Linf_line, 'y--', linewidth=2, label="Régression Linf")
+    
+    plt.xlabel('Taille de maille $Δr$ (m)', fontsize=12, fontweight='bold')
+    plt.ylabel('Erreur $L_1$, $L_2$ et $L_{\infty}$  (mol/m³)', fontsize=12, fontweight='bold')
+    plt.title("Norme des erreurs en fonction de $Δr$ pour le schéma d'ordre" + titre_graph)
+    plt.tick_params(width=2, which='both', direction='in', top=True, right=True, length=6)
+    plt.grid(True)
+    plt.legend()
+    plt.gca().spines['bottom'].set_linewidth(2)
+    plt.gca().spines['left'].set_linewidth(2)
+    plt.gca().spines['right'].set_linewidth(2)
+    plt.gca().spines['top'].set_linewidth(2)
+    plt.show()
+    
 def graph_convergence(DR, L1, L2, Linf, titre_graph):
     plt.figure(figsize=(8, 6))
     plt.loglog(DR, L1, 'bo', label="Norme L1")
