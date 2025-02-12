@@ -3,8 +3,11 @@
 
 import fct
 import numpy as np
-import matplotlib.pyplot as plt
+import sympy as sp
 import pytest
+
+import matplotlib.pyplot as plt
+# import pytest
 
 
 # parametres du probleme
@@ -13,13 +16,27 @@ class Parametres:
     Deff = 10 ** -10
     Ce = 20
     R = 0.5
+    k = 4e-9
+    Nm = 100
+    #nb d'année à simuler
+    annee = 10
+    #valeur du dt en jours
+    nb_jours_dt = 20
+    #conversion du dt en secondes
+    dt = nb_jours_dt*24*3600
 
-
-N = 5
 prm = Parametres()
+N = prm.Nm
 dr = prm.R / (N - 1)
-r = np.arange(0, prm.R + dr, dr)
+r = np.arange(0, prm.R + dr/2, dr)
+#nombre d'itérations en temps totales pour le probleme transitoire
+Niter_t = int(prm.annee*365/prm.nb_jours_dt)
 
+t, rf = sp.symbols('t rf')
+
+vecteur_t = np.linspace(0, Niter_t*prm.dt, Niter_t)
+
+# %%
 # solution numérique et calcul de l'ordre de convergence
 C_o1 = fct.resolution_EDP_ordre_1(N, r, prm)
 p_L2_o1, L1_o1, L2_o1, DR_o1, Linf_o1 = fct.ordre_convergence(fct.resolution_EDP_ordre_1, prm)
@@ -60,5 +77,28 @@ plt.show()
 
 # graph des normes L1 et L2 des erreurs pour l'ordre 2
 fct.graph_convergence(DR_o2, L1_o2, L2_o2, Linf_o2, " 2")
+
+C_o2_source = fct.resolution_EDP_ordre_2_source2(N, r, prm)
+# %%
+
+cond_init = np.zeros(N)
+cond_init[-1] = prm.Ce
+
+source_1 = sp.lambdify([t, rf], 0, "numpy")
+
+C_imp = fct.euler_imp(N, r, Niter_t, prm.dt, prm,cond_init, np.zeros(Niter_t) , np.repeat(prm.Ce, Niter_t), source_1)
+
+plt.plot(r, C_imp[-1,:], label='imp')
+plt.plot(r,C_o2_source, label='stat')
+plt.legend()
+plt.show()
+
+# %%
+
+
+C_sy = sp.exp(7*rf)*sp.exp(-10**-10*t)
+
+fct.MMS_euler_imp(C_sy, prm, vecteur_t, r, N, Niter_t, prm.dt)
+# %%
 
 pytest.main(['-q', '--tb=long', 'corr.py'])

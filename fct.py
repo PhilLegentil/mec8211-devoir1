@@ -10,6 +10,7 @@ Created on Mon Feb  3 11:17:35 2025
 """
 
 import numpy as np
+import sympy as sp
 import matplotlib.pyplot as plt
 
 
@@ -75,6 +76,117 @@ def resolution_EDP_ordre_2(N, r, prm):
 
     return C
 
+
+def resolution_EDP_ordre_2_source2(N, r, prm):
+    # resolution du systeme matriciel pour DF d'ordre 2
+
+    dr = prm.R / (N - 1)
+    A = np.zeros((N, N))
+    B = np.zeros(N)
+
+    # conditions frontières
+    # à r=R
+    A[-1, -1] = 1
+    B[-1] = prm.Ce
+
+    # à r=0
+    A[0, 0] = -3
+    A[0, 1] = 4
+    A[0, 2] = -1
+
+    # domaine
+
+    for i in range(1, N - 1):
+        A[i, i] = -2*prm.Deff/ dr ** 2 - prm.k
+        A[i, i + 1] = prm.Deff*(1 / dr ** 2 + 1 / (2 * dr * r[i]))
+        A[i, i - 1] = prm.Deff*(1 / dr ** 2 - 1 / (2 * r[i] * dr))
+
+    C = np.linalg.solve(A, B)
+
+    return C
+
+def euler_exp(N, r, Niter_t, dt, prm):
+    # schema d'Euler explicite pour le problème spécifique du devoir 2
+    C = np.zeros((Niter_t,N))
+    
+    dr = prm.R / (N - 1)
+    
+    C[:, -1] = prm.Ce
+    
+    un_tier = 1/3
+    for i in range(1, Niter_t):
+        
+        a = un_tier*(4*C[i-1,1] - C[i-1,2])*prm.Deff*dt*(1/dr**2-1/(2*dr*r[1]))
+        b = C[i-1, 1]*(1-2*prm.Deff*dt/(dr**2)-prm.k*dt)
+        c = C[i-1, 2]*prm.Deff*dt*(1/(2*dr*r[1])+1/dr**2)
+        
+        C[i,1] =  a + b + c
+        
+        for j in range(2, N-1):
+            a = C[i-1, j-1]*prm.Deff*dt*(1/dr**2-1/(2*dr*r[j]))
+            b = C[i-1, j]*(1-2*prm.Deff*dt/dr**2-prm.k*dt)
+            c = C[i-1, j+1]*prm.Deff*dt*(1/(2*dr*r[j])+1/dr**2)
+            C[i,j] = a + b + c
+        C[i, 0] = un_tier*(4*C[i,1] - C[i,2])
+    return C
+
+def euler_imp(N, r, Niter_t, dt, prm, cond_init, bound_gauche, bound_droite, S):
+    """methode d'Euler implicite généraliser pour différentes valeurs de conditions frontière"""
+    """
+    
+
+    Parameters
+    ----------
+
+    cond_init : array(size=N)
+        Contient les conditions initiales pour chaque coordonnée en r
+    bound_gauche : array(size=Niter_t)
+        NEUMANN : valeur de la dérivé première pour r=0 à chaque coordonée en t
+    bound_droite : array(size=Niter_t)
+        DIRICHLET : valeur de la concentration pour r=R à chaque coordonnée en t
+    S : fonction 
+        retourne la valeur du terme source en chaque point (t,r)
+
+    Returns
+    -------
+    C : np.array((N_itert, N))
+        Chaque ligne contient le profil de concentration 
+        en r à la coordonnée temporel i*dt
+        
+
+    """
+
+    
+    deux_tier = 2/3
+    dr = prm.R / (N - 1)
+    C = np.zeros((Niter_t,N))
+    
+    C[0,:]= cond_init.copy()
+    
+    A = np.zeros((N,N))
+    A[0,0] = -3
+    A[0,1] = 4
+    A[0,2] = -1
+    
+    A[1,1] = prm.Deff*dt*(4/(3*r[1]*2*dr)+2/(3*dr**2)) + prm.k*dt + 1
+    A[1,2] = prm.Deff*dt*(-4/(6*r[1]*dr)-2/(3*dr**2))
+    A[N-1,N-1] = 1
+    
+    for i in range(2,N-1):
+        A[i,i-1] = prm.Deff*dt*(1/(r[i]*2*dr)-1/dr**2)
+        A[i, i] = 2*dt*prm.Deff/dr**2 + prm.k*dt + 1
+        A[i,i+1] = prm.Deff*dt*(-1/(r[i]*2*dr)-1/dr**2)
+
+    for t in range(1, Niter_t):
+        B = C[t-1,:].copy()
+        B[0] = bound_gauche[t] * 2 * dr
+        B[1] +=  deux_tier*bound_gauche[t]*prm.Deff*dt*(1/(2*r[1]) - 1/dr)
+        B[1:N-2] -= np.array([S(t*dt, ri) for ri in r[1:N-2]])*dt
+        B[-1] = bound_droite[t]
+        C[t,:] = np.linalg.solve(A, B)
+
+    return C
+    
 
 def sol_an(N, prm):
     # creation des points pour la solution analytique
@@ -190,3 +302,31 @@ def graph_convergence(DR, L1, L2, Linf, titre_graph):
     plt.gca().spines['right'].set_linewidth(2)
     plt.gca().spines['top'].set_linewidth(2)
     plt.show()
+    
+
+def MMS_euler_imp(C_sy, prm, vecteur_t, r, N, Niter_t, dt):
+    # application de la MMS pour le schéma d'Euler implicite
+    t, rf = sp.symbols('t rf')
+    C_f = sp.lambdify([t,rf], C_sy, "numpy")
+    
+    S_sy = - sp.diff(C_sy, t) + prm.Deff/rf*sp.diff(rf*sp.diff(C_sy, rf),rf) - prm.k*C_sy
+    
+    S = sp.lambdify([t,rf], S_sy , "numpy")
+    
+    Neumann_gauche = sp.lambdify(t,sp.diff(C_sy, rf).subs(rf, 0) , "numpy")
+    Dirichlet_droite = sp.lambdify(t, C_sy.subs(rf,prm.R), "numpy")
+    
+    bound_gauche = Neumann_gauche(vecteur_t)
+    bound_droite = Dirichlet_droite(vecteur_t)
+    cond_init_MMS = [C_f(0, ri) for ri in r]
+    
+    C_MMS = euler_imp(N, r, Niter_t, dt, prm, cond_init_MMS, bound_gauche, bound_droite, S)
+    
+    plt.plot(r, C_MMS[-1], label="sol num MMS")
+    plt.plot(r, C_f(vecteur_t[-1], r), label="sol imposee")
+    plt.legend()
+    plt.show()
+    
+    erreur_MMS = abs(C_MMS[-1] - C_f(vecteur_t[-1], r))
+    
+    return erreur_MMS
