@@ -1,334 +1,313 @@
-# definition des fonction pour resoudre le problème de diffusion par 
-# differences finies
-
-# !/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Feb  3 11:17:35 2025
+Created on Fri Mar  7 21:48:40 2025
 
-@author: malatchoumymarine
+@author: Phil
 """
-
 import numpy as np
-import sympy as sp
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 
-def resolution_EDP_ordre_1(N, r, prm):
-    # resolution du systeme matriciel pour DF d'ordre 1
-
-    dr = prm.R / (N - 1)
+def resolution_EDP_ordre_2_time(N, Deff, R, Ce, k, tf, dt):
+    """
+    Résout numériquement une équation différentielle partielle de diffusion à l'aide de la méthode d'Euler implicite.
+    
+    Cette fonction utilise un schéma en différences finies d'ordre 2 pour résoudre l'équation de diffusion
+    sur un espace discrétisé radial, en tenant compte des conditions aux limites (Dirichlet et Neumann) et
+    en intégrant la solution dans le temps avec la méthode d'Euler implicite.
+    
+    Args:
+    - N (int) : Nombre de points de discrétisation en espace.
+    - Deff (float) : Coefficient de diffusion effectif.
+    - R (float) : Rayon de la colonne.
+    - Ce (float) : Concentration en sel au bord (condition de Dirichlet).
+    - k (float) : Taux de réaction.
+    - tf (float) : Temps final de la simulation.
+    - dt (float) : Pas de temps.
+    
+    Returns:
+    - C_t (numpy.ndarray) : Matrice des concentrations à chaque pas de temps pour chaque point en espace.
+    """
+    # Initialisation de la discrétisation et des matrices
+    dr = R/(N-1)
     A = np.zeros((N, N))
     B = np.zeros(N)
+    C_t = B
 
-    # conditions frontières
-    # à r=R
+    # Conditions aux limites
     A[-1, -1] = 1
-    B[-1] = prm.Ce
-
-    # à r=0
-    A[0, 0] = -3
-    A[0, 1] = 4
+    B[-1] = Ce
+    A[0, 0] = -3 
+    A[0, 1] = 4 
     A[0, 2] = -1
     B[0] = 0
-
-    S = prm.S
-    Deff = prm.Deff
-    for i in range(1, N - 1):
-        A[i, i] = (-2 / dr ** 2 - 1 / (dr * r[i]))
-        A[i, i + 1] = (1 / dr ** 2 + 1 / (dr * r[i]))
-        A[i, i - 1] = 1 / dr ** 2
-
-        B[i] = S / Deff
-
-    C = np.linalg.solve(A, B)
-
-    return C
-
-
-def resolution_EDP_ordre_2(N, r, prm):
-    # resolution du systeme matriciel pour DF d'ordre 2
-
-    dr = prm.R / (N - 1)
-    A = np.zeros((N, N))
-    B = np.zeros(N)
-
-    # conditions frontières
-    # à r=R
-    A[-1, -1] = 1
-    B[-1] = prm.Ce
-
-    # à r=0
-    A[0, 0] = -3
-    A[0, 1] = 4
-    A[0, 2] = -1
-
-    # domaine
-
-    for i in range(1, N - 1):
-        A[i, i] = -2 / dr ** 2
-        A[i, i + 1] = (1 / dr ** 2 + 1 / (2 * dr * r[i]))
-        A[i, i - 1] = 1 / dr ** 2 - 1 / (2 * r[i] * dr)
-
-        B[i] = prm.S / prm.Deff
-
-    C = np.linalg.solve(A, B)
-
-    return C
-
-
-
-def euler_imp(N, r, Niter_t, dt, prm, cond_init, bound_gauche, bound_droite, S):
-    """methode d'Euler implicite généraliser pour différentes valeurs de conditions frontière"""
-    """
     
-
-    Parameters
-    ----------
-
-    cond_init : array(size=N)
-        Contient les conditions initiales pour chaque coordonnée en r
-    bound_gauche : array(size=Niter_t)
-        NEUMANN : valeur de la dérivé première pour r=0 à chaque coordonée en t
-    bound_droite : array(size=Niter_t)
-        DIRICHLET : valeur de la concentration pour r=R à chaque coordonnée en t
-    S : fonction 
-        retourne la valeur du terme source en chaque point (t,r)
-
-    Returns
-    -------
-    C : np.array((N_itert, N))
-        Chaque ligne contient le profil de concentration 
-        en r à la coordonnée temporel i*dt
-        
-
-    """
-
+    # Construction de la matrice pour les points internes
+    for i in range(1, N-1):
+        ri = i*dr
+        A[i, i] = 2/dr**2*dt*Deff + 1 + k*dt
+        A[i, i+1] = -(1/dr**2 + 1/(2*ri*dr))*dt*Deff
+        A[i, i-1] = -(1/dr**2 - 1/(2*ri*dr))*dt*Deff
     
-    deux_tier = 2/3
-    dr = prm.R / (N - 1)
-    C = np.zeros((Niter_t,N))
+    # Résolution temporelle
+    t = dt
+    while t < tf:
+        B = np.linalg.solve(A, B)
+        C_t = np.vstack((C_t, B))
+        t += dt
     
-    C[0,:]= cond_init.copy()
-    
-    A = np.zeros((N,N))
-    A[0,0] = -3
-    A[0,1] = 4
-    A[0,2] = -1
-    
-    A[1,1] = prm.Deff*dt*(4/(3*r[1]*2*dr)+2/(3*dr**2)) + prm.k*dt + 1
-    A[1,2] = prm.Deff*dt*(-4/(6*r[1]*dr)-2/(3*dr**2))
-    A[N-1,N-1] = 1
-    
-    for i in range(2,N-1):
-        A[i,i-1] = prm.Deff*dt*(1/(r[i]*2*dr)-1/dr**2)
-        A[i, i] = 2*dt*prm.Deff/dr**2 + prm.k*dt + 1
-        A[i,i+1] = prm.Deff*dt*(-1/(r[i]*2*dr)-1/dr**2)
-
-    for t in range(1, Niter_t):
-        B = C[t-1,:].copy()
-        B[0] = bound_gauche[t] * 2 * dr
-        B[1] +=  deux_tier*bound_gauche[t]*prm.Deff*dt*(1/(2*r[1]) - 1/dr)
-        B[1:N-2] -= np.array([S(t*dt, ri) for ri in r[1:N-2]])*dt
-        B[-1] = bound_droite[t]
-        C[t,:] = np.linalg.solve(A, B)
-
-    return C
-    
-
-def fonc_an(N, prm):
-    # creation des points pour la solution analytique
-    ra = np.linspace(0, prm.R, N)
-    solution = 1 / 4 * prm.S / prm.Deff * prm.R ** 2 * (ra ** 2 / prm.R ** 2 - 1) + prm.Ce
-    return ra, solution
-
-
-def ordre_convergence(schema, prm):
-    # calcul l'ordre de convergence selon le schema
-
-    Ne = [5, 25, 100, 150, 300]
-
-    L1 = np.zeros(len(Ne))
-    L2 = np.zeros(len(Ne))
-    Linf = np.zeros(len(Ne))
-
-    DR = np.zeros(len(Ne))
-
-    # calcul de L1 et L2 pour chaque Ne
-    for i in range(len(Ne)):
-
-        dr = prm.R / (Ne[i] - 1)
-        r = np.arange(0, prm.R + dr/2, dr)
-        DR[i] = prm.R / (Ne[i] - 1)
-        C = schema(Ne[i], r, prm)
-
-        ra, Ca = fonc_an(Ne[i], prm)
-
-        L1[i], L2[i], Linf[i] = normes_erreurs(C, Ca, Ne[i])
-
-    # calcul de la pente a partir des deux derniers 
-    # points de chaque vecteurs norme
-    ordre_conv = np.log(L2[-1] / L2[-2]) / np.log(DR[-1] / DR[-2])
-
-    return ordre_conv, L1, L2, DR, Linf
-
-
-def ordre_convergence_espace(Niter_t, vecteur_t, dt, prm, sol_man):
-    # calcul l'ordre de convergence selon le schema
-
-    Ne = [725, 1250, 2500, 5000, 10000]
-    
-    L1 = np.zeros(len(Ne))
-    L2 = np.zeros(len(Ne))
-    Linf = np.zeros(len(Ne))
-
-    DR = np.zeros(len(Ne))
-
-    # calcul de L1 et L2 pour chaque Ne
-    for i in range(len(Ne)):
-        DR[i] = prm.R / (Ne[i] - 1)
-        vecteur_r = np.arange(0, prm.R + DR[i]/2, DR[i])
-        
-        normes = MMS_euler_imp(sol_man, prm, vecteur_t, vecteur_r, Ne[i], Niter_t, dt)[1]
-        L1[i] = normes[0]
-        L2[i] = normes[1]
-        Linf[i] = normes[2] 
-
-    # calcul de la pente a partir des deux derniers 
-    # points de chaque vecteurs norme
-    ordre_conv = np.log(L2[-1] / L2[-2]) / np.log(DR[-1] / DR[-2])
-
-    return ordre_conv, L1, L2, DR, Linf
-
-def ordre_convergence_temps(N, r, prm, sol_man):
-    
-    DT = [1, .1, .01, .001, .0001]
-    
-    L1 = np.zeros(len(DT))
-    L2 = np.zeros(len(DT))
-    Linf = np.zeros(len(DT))
-    
-    for i, dt in enumerate(DT):
-        Niter_t = 100
-        vecteur_t = np.linspace(0, Niter_t*DT[i], Niter_t)
-        
-        normes = MMS_euler_imp(sol_man, prm, vecteur_t, r, N, Niter_t, dt)[1]
-        L1[i] = normes[0]
-        L2[i] = normes[1]
-        Linf[i] = normes[2] 
-
-    ordre_conv = np.log(L2[-1] / L2[-2]) / np.log(DT[-1] / DT[-2])
-    
-    return ordre_conv, L1, L2, DT, Linf
-
-
-def normes_erreurs(sol_num, sol_an, Ne):
-    
-    L1 = 0
-    L2 = 0
-    Linf = 0
-    
-    for i, sn in enumerate(sol_num):
-        L1 += 1 / Ne * abs(sn - sol_an[i])
-        L2 += 1 / Ne * abs(sn - sol_an[i]) ** 2
-    L2 = np.sqrt(L2)
-    Linf = max(abs(sol_num - sol_an))
-    
-    return L1, L2, Linf
+    return C_t
 
 
 def fit_poly(x, y):
+    """
+    Effectue une régression linéaire en utilisant la méthode des moindres carrés sur les logarithmes des données.
+    
+    Cette fonction effectue une régression linéaire sur les logarithmes en base 10 des données x et y. 
+    Elle retourne les coefficients de la droite de régression (pente et intercept) ajustée aux données.
+    
+    Args:
+    - x (numpy.ndarray) : Données sur l'axe des x.
+    - y (numpy.ndarray) : Données sur l'axe des y.
+    
+    Returns:
+    - coeffs (numpy.ndarray) : Coefficients de la régression (pente et intercept).
+    """
     log_x, log_y = np.log10(x), np.log10(y)
     coeffs = np.polyfit(log_x, log_y, 1)  # Régression linéaire
     return coeffs  # coeffs[0] = pente, coeffs[1] = intercept
 
-def graph_convergence_polyfit(DR, L1, L2, Linf, titre_graph, titreX):
+
+def resolution_EDP_ordre_2_MMS(prm, S, C_MMS, Neu, Dir):
+    """
+    Résout numériquement une équation différentielle partielle de diffusion avec la méthode des solutions manufacturées (MMS).
     
-    sorted_indices = np.argsort(DR)
-    DR_sorted = np.array(DR)[sorted_indices]
+    Cette fonction résout une équation de diffusion en utilisant la méthode des solutions manufacturées pour vérifier 
+    la précision du schéma numérique. Elle inclut l'intégration dans le temps et les conditions aux limites de Dirichlet et Neumann.
+    
+    Args:
+    - prm (Parametres) : Objet contenant les paramètres de la simulation (R, N, Nt, etc.).
+    - S (function) : Fonction représentant le terme source de l'équation.
+    - C_MMS (function) : Fonction représentant la solution analytique utilisée pour la comparaison.
+    - Neu (function) : Fonction représentant la condition aux limites de Neumann à r=0.
+    - Dir (function) : Fonction représentant la condition aux limites de Dirichlet à r=R.
+    
+    Returns:
+    - C_t (numpy.ndarray) : Matrice des concentrations à chaque pas de temps pour chaque point en espace.
+    """
+    # Initialisation et définition des matrices
+    R = prm.R
+    N = prm.N
+    Nt = prm.Nt
+    dt = prm.tf / prm.Nt
+    D = prm.Deff
+    dr = R / (N - 1)
+    r_vals = np.linspace(0, R, N)
+    A = np.zeros((N, N))
+    B = np.array([C_MMS(0, i) for i in r_vals])
+    C_t = B.copy()
+
+    # Conditions aux limites
+    A[-1, -1] = 1
+    A[0, 0] = -3
+    A[0, 1] = 4
+    A[0, 2] = -1
+    
+    # Construction de la matrice pour les points internes
+    for i in range(1, N - 1):
+        ri = i * dr
+        A[i, i] = 2 * dt * D / dr**2 + 1 + prm.k * dt
+        A[i, i + 1] = -(1 / dr**2 + 1 / (2 * ri * dr)) * dt * D
+        A[i, i - 1] = -(1 / dr**2 - 1 / (2 * ri * dr)) * dt * D
+
+    # Résolution temporelle
+    tp = dt
+    for j in range(1, Nt):
+        B_new = B.copy()
+        for i in range(1, N - 1):
+            ri = i * dr
+            B_new[i] += S(tp, ri) * dt
+        B_new[-1] = Dir(tp)
+        B_new[0] = Neu(tp) * 2 * dr
+        B = np.linalg.solve(A, B_new)
+        C_t = np.vstack((C_t, B))
+        tp += dt
+
+    return np.array(C_t)
+
+
+def mat_C_MMS(C, Nr, Nt, dr, dt):
+    """
+    Crée une matrice des concentrations pour une solution analytique donnée.
+    
+    Cette fonction génère une matrice des concentrations à partir d'une fonction C (solution exacte),
+    en évaluant la solution à chaque point du maillage radial et pour chaque instant de temps.
+    
+    Args:
+    - C (function) : Fonction représentant la solution exacte de la concentration.
+    - Nr (int) : Nombre de points radiaux.
+    - Nt (int) : Nombre de points temporels.
+    - dr (float) : Pas de discrétisation spatial (radial).
+    - dt (float) : Pas de discrétisation temporel.
+    
+    Returns:
+    - C_mat (numpy.ndarray) : Matrice des concentrations à chaque instant de temps pour chaque point radial.
+    """
+    C_mat = np.zeros((Nt, Nr))
+    for k in range(Nr):
+        for i in range(Nt):
+            C_mat[i, k] = C(i * dt, k * dr)
+    return C_mat
+
+
+def calcul_erreur_espace(Ne, prm, S, C_f, Neu, Dir):
+    """
+    Calcule les erreurs de la solution numérique par rapport à la solution exacte dans l'espace (erreur L1, L2 et Linf).
+    
+    Cette fonction calcule les erreurs entre la solution numérique et la solution exacte dans l'espace
+    pour différentes tailles de maillage radial (Ne), en utilisant les normes L1, L2 et Linf.
+    
+    Args:
+    - Ne (int) : Nombre de points de discrétisation en espace.
+    - prm (Parametres) : Paramètres de la simulation.
+    - S (function) : Fonction représentant le terme source.
+    - C_f (function) : Fonction représentant la solution exacte.
+    - Neu (function) : Condition de Neumann à r=0.
+    - Dir (function) : Condition de Dirichlet à r=R.
+    
+    Returns:
+    - L1 (float) : Erreur L1.
+    - L2 (float) : Erreur L2.
+    - Linf (float) : Erreur Linf.
+    - dr (float) : Pas de discrétisation radial.
+    """
+    L1 = 0
+    L2 = 0
+    Linf = 0
+    prm.N = Ne
+    dr = prm.R / (Ne - 1)
+    dt = prm.tf / prm.Nt
+    C = resolution_EDP_ordre_2_MMS(prm, S, C_f, Neu, Dir)
+    C_exact = mat_C_MMS(C_f, Ne, prm.Nt, dr, dt)
+    
+    for ti in range(prm.Nt):
+        for k in range(Ne):
+            L1 += dt * dr * abs(C[ti, k] - C_exact[ti, k])
+            L2 += dt * dr * abs(C[ti, k] - C_exact[ti, k])**2
+    
+    L2 = np.sqrt(L2)
+    Linf = np.max(np.abs(C - C_exact))
+        
+    return L1, L2, Linf, dr
+
+
+
+def calcul_erreur_temps(Nt, prm, S, C_f, Neu, Dir):
+    """
+    Calcule les erreurs de la solution numérique par rapport à la solution exacte dans le temps (erreur L1, L2 et Linf).
+    
+    Cette fonction calcule les erreurs entre la solution numérique et la solution exacte dans le temps
+    pour différentes tailles de pas de temps (Nt), en utilisant les normes L1, L2 et Linf.
+    
+    Args:
+    - Nt (int) : Nombre de points de discrétisation en temps.
+    - prm (Parametres) : Paramètres de la simulation.
+    - S (function) : Fonction représentant le terme source.
+    - C_f (function) : Fonction représentant la solution exacte.
+    - Neu (function) : Condition de Neumann à r=0.
+    - Dir (function) : Condition de Dirichlet à r=R.
+    
+    Returns:
+    - L1 (float) : Erreur L1.
+    - L2 (float) : Erreur L2.
+    - Linf (float) : Erreur Linf.
+    - dt (float) : Pas de discrétisation temporel.
+    """
+    prm.N = 1200
+    prm.Nt = Nt
+    L1 = 0
+    L2 = 0
+    Linf = 0
+    dr = prm.R / (prm.N - 1)
+    dt = prm.tf / (Nt - 1)
+    
+    C = resolution_EDP_ordre_2_MMS(prm, S, C_f, Neu, Dir)
+    C_exact = mat_C_MMS(C_f, prm.N, Nt, dr, dt)
+    
+    for ti in range(Nt):
+        for k in range(prm.N):
+            L1 += dt * dr * abs(C[ti, k] - C_exact[ti, k])
+            L2 += dt * dr * abs(C[ti, k] - C_exact[ti, k])**2
+    
+    L2 = np.sqrt(L2)
+    Linf = np.max(np.abs(C - C_exact))
+        
+    return L1, L2, Linf, dt
+
+
+# %% ÉTUDE DE CONVERGENCE EN ESPACE ET EN TEMPS
+
+def plot_convergence(D, L1, L2, Linf, p_L2, xlabel, ylabel, title):
+    """
+    Fonction pour tracer les courbes de convergence des erreurs L1, L2 et Linf en fonction de D (taille de mailles ou pas de temps).
+    
+    Parameters:
+    - D : Liste des tailles de mailles ou des pas de temps.
+    - L1, L2, Linf : Erreurs calculées pour chaque taille de mailles ou pas de temps.
+    - p_L2 : Ordre d'erreur en norme L2.
+    - xlabel : Légende de l'axe X.
+    - ylabel : Légende de l'axe Y.
+    - title : Titre du graphique.
+    """
+    plt.figure(figsize=(8, 6))  
+    plt.loglog(D, L1, 'bo', label="Norme L1")
+    plt.loglog(D, L2, 'ro', label="Norme L2")
+    plt.loglog(D, Linf, 'yo', label="Norme Linf")
+    plt.xlabel(xlabel, fontsize=12, fontweight='bold')
+    plt.ylabel(ylabel, fontsize=12, fontweight='bold')
+    plt.title(title)
+    plt.tick_params(width=2, which='both', direction='in', top=True, right=True, length=6)
+    plt.grid(True)
+
+    # Régression linéaire pour ajuster la tendance des erreurs
+    sorted_indices = np.argsort(D)
+    D_sorted = np.array(D)[sorted_indices]
     L1_sorted = np.array(L1)[sorted_indices]
     L2_sorted = np.array(L2)[sorted_indices]
     Linf_sorted = np.array(Linf)[sorted_indices]
-    
-    # Sélection des 3 plus petits DR
-    DR_fit = DR_sorted[:3]  
-    L1_fit = L1_sorted[:3]
-    L2_fit = L2_sorted[:3]
-    Linf_fit = Linf_sorted[:3]
-    
-    # Calcul des régressions pour chaque norme
-    slope_L1, intercept_L1 = fit_poly(DR_fit, L1_fit)
-    slope_L2, intercept_L2 = fit_poly(DR_fit, L2_fit)
-    slope_Linf, intercept_Linf = fit_poly(DR_fit, Linf_fit)
-    
-    # Génération des lignes de tendance
-    DR_line = np.linspace(min(DR), max(DR), 100)  # Étend la ligne sur tout le graphe
-    L1_line = 10**(intercept_L1) * DR_line**slope_L1
-    L2_line = 10**(intercept_L2) * DR_line**slope_L2
-    Linf_line = 10**(intercept_Linf) * DR_line**slope_Linf
-    
-    # Création du graphique
-    plt.figure(figsize=(8, 6))
-    
-    # Points
-    plt.loglog(DR, L1, 'bo', label="Norme L1")
-    plt.loglog(DR, L2, 'ro', label="Norme L2")
-    plt.loglog(DR, Linf, 'yo', label="Norme Linf")
-    
-    # Lignes de tendance issues de la régression linéaire
-    plt.loglog(DR_line, L1_line, 'b--', linewidth=2, label="Régression L1")
-    plt.loglog(DR_line, L2_line, 'r--', linewidth=2, label="Régression L2")
-    plt.loglog(DR_line, Linf_line, 'y--', linewidth=2, label="Régression Linf")
-    
-    plt.xlabel(titreX, fontsize=12, fontweight='bold')
-    plt.ylabel('Erreur $L_1$, $L_2$ et $L_{\infty}$  (mol/m³)', fontsize=12, fontweight='bold')
-    plt.title(titre_graph)
-    plt.tick_params(width=2, which='both', direction='in', top=True, right=True, length=6)
-    plt.grid(True)
-    plt.legend()
-    plt.gca().spines['bottom'].set_linewidth(2)
-    plt.gca().spines['left'].set_linewidth(2)
-    plt.gca().spines['right'].set_linewidth(2)
-    plt.gca().spines['top'].set_linewidth(2)
-    plt.show()
-    
-def graph_convergence(DR, L1, L2, Linf, titre_graph, titreX):
-    plt.figure(figsize=(8, 6))
-    plt.loglog(DR, L1, 'bo', label="Norme L1")
-    plt.loglog(DR, L2, 'ro', label="Norme L2")
-    plt.loglog(DR, Linf, 'yo', label="Norme Linf")
-    plt.xlabel(titreX, fontsize=12, fontweight='bold')  # Remplacer "h" par "Δx"
-    plt.ylabel('Erreur $L_1$, $L_2$ et $L_inf$  (mol/m^3)', fontsize=12, fontweight='bold')
-    plt.title(titre_graph)
-    plt.tick_params(width=2, which='both', direction='in', top=True, right=True, length=6)
-    plt.grid(True)
-    plt.legend()
-    plt.gca().spines['bottom'].set_linewidth(2)
-    plt.gca().spines['left'].set_linewidth(2)
-    plt.gca().spines['right'].set_linewidth(2)
-    plt.gca().spines['top'].set_linewidth(2)
-    plt.show()
-    
 
-def MMS_euler_imp(C_sy, prm, vecteur_t, r, N, Niter_t, dt):
-    # application de la MMS pour le schéma d'Euler implicite
-    t, rf = sp.symbols('t rf')
-    C_f = sp.lambdify([t,rf], C_sy, "numpy")
+    D_fit = D_sorted[:6]  
+    L1_fit = L1_sorted[:6]
+    L2_fit = L2_sorted[:6]
+    Linf_fit = Linf_sorted[:6]
+
+    # Calcul des régressions pour chaque norme
+    slope_L1, intercept_L1 = fit_poly(D_fit, L1_fit)
+    slope_L2, intercept_L2 = fit_poly(D_fit, L2_fit)
+    slope_Linf, intercept_Linf = fit_poly(D_fit, Linf_fit)
+
+    # Génération des lignes de tendance
+    D_line = np.linspace(min(D), max(D), 100) 
+
+    # Étend la ligne sur tout le graphe
+    L1_line = 10**(intercept_L1) * D_line**slope_L1
+    L2_line = 10**(intercept_L2) * D_line**slope_L2
+    Linf_line = 10**(intercept_Linf) * D_line**slope_Linf
+
+    # Tracé des lignes de régression
+    plt.loglog(D_line, L1_line, 'b--', linewidth=2, label="Régression L1")
+    plt.loglog(D_line, L2_line, 'r--', linewidth=2, label="Régression L2")
+    plt.loglog(D_line, Linf_line, 'y--', linewidth=2, label="Régression Linf")
+
+    # Affichage de l'équation de la courbe L2
+    equation = f"y = {10**intercept_L2:.2e} * x^{slope_L2:.2f}"
+    plt.text(0.5, 0.1, f"Norme L2 : {equation}", fontsize=12, transform=plt.gca().transAxes, color='r')
     
-    S_sy = - sp.diff(C_sy, t) + prm.Deff/rf*sp.diff(rf*sp.diff(C_sy, rf),rf) - prm.k*C_sy
+    # Affichage de l'ordre de l'erreur
+    plt.text(0.5, 0.2, f"p = {p_L2:.5g}", fontsize=12, transform=plt.gca().transAxes, color='k')
+
+    plt.legend()
+    plt.show()
+
     
-    S = sp.lambdify([t,rf], S_sy , "numpy")
-    
-    Neumann_gauche = sp.lambdify(t,sp.diff(C_sy, rf).subs(rf, 0) , "numpy")
-    Dirichlet_droite = sp.lambdify(t, C_sy.subs(rf,prm.R), "numpy")
-    
-    bound_gauche = Neumann_gauche(vecteur_t)
-    bound_droite = Dirichlet_droite(vecteur_t)
-    cond_init_MMS = [C_f(0, ri) for ri in r]
-    
-    C_MMS = euler_imp(N, r, Niter_t, dt, prm, cond_init_MMS, bound_gauche, bound_droite, S)
-    
-    normes_e = normes_erreurs(C_MMS[-1], C_f(vecteur_t[-1], r), N)
-    erreur_MMS = abs(C_MMS[-1] - C_f(vecteur_t[-1], r))
-    
-    return C_MMS, normes_e

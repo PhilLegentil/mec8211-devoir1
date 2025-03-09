@@ -1,139 +1,163 @@
-# Résolution d'un probleme de diffusion par différence finies
-# génération des vecteurs solutions et création des graphes
+# Résolution d'un problème de diffusion, dépendant du temps, par la méthode d'Euleur implicite avec 
+#vérification de la solution par la MMS
 
-import fct
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Feb  3 21:29:05 2025
+
+@author: malatchoumymarine
+"""
 import numpy as np
-import sympy as sp
-# import pytest
-
 import matplotlib.pyplot as plt
-# import pytest
+import sympy as sp
+import matplotlib.ticker as ticker
+from fct import *
 
 
-# parametres du probleme
+# %% RÉSOLUTION DU PROBLEME
+
+# Paramètres du problème
+N = 30  # Nombre de points dans la discrétisation radiale
+Deff = 10**-10  # Coefficient de diffusion effectif
+Ce = 20  # Concentration à la frontière extérieure
+R = 0.5  # Rayon de la région de diffusion
+k = 4*10**-9  # Constante de vitesse de réaction
+tf = 4*10**9  # Temps final de simulation
+dt = 4*10**9/100  # Pas de temps
+
+# Résolution numérique de l'EDP par la méthode d'Euler implicite
+C = resolution_EDP_ordre_2_time(N, Deff, R, Ce, k, tf, dt)
+
+# Discrétisation de l'espace
+dr = R/(N-1)  # Taille du maillage radial
+ri = np.linspace(0,R,N)  # Valeurs discrétisées pour la solution numérique
+
+# Discrétisation pour la solution analytique
+ra = np.linspace(0,R,200)
+
+# Graphique : solution numérique
+temps_tra = np.array([0,1,2,5,10,99])  # Instants de temps à afficher
+
+for t in temps_tra:
+    Ct = C[t,:]  # Extraire la concentration à l'instant t
+    plt.plot(ri, Ct, "-+", label=f"solution numérique à t = {t*dt/(3600*24*365):.1f} ans")
+
+plt.xlabel("r [m]")
+plt.ylabel("concentration en sel [mol/m^3]")
+# plt.title("Évolution de la concentration en sel à t = 126 ans")
+plt.grid("on")
+plt.legend(fontsize=8)
+plt.show()
+
+
+# %% APPLICATION DE LA MMS 
+
+# Définition des paramètres pour la solution analytique (MMS)
 class Parametres:
-    S = 2 * 10 ** -8
-    Deff = 10 ** -10
-    Ce = 20
-    R = 0.5
-    k = 4e-9
-    Nm = 150
-    #nb d'année à simuler
-    annee = 20
-    #valeur du dt en jours
-    nb_jours_dt = 5
-    #conversion du dt en secondes
-    dt = nb_jours_dt*24*3600
+    tf = 1  # Temps final
+    Nt = 100  # Nombre de points en temps
+    N = 20  # Nombre de points en espace
+    Deff = 1  # Diffusion
+    R = 0.5  # Rayon
+    k = 10  # Vitesse de réaction
+    Da = k*R**2/Deff  # Nombre de Damköhler
 
 prm = Parametres()
-N = prm.Nm
-dr = prm.R / (N - 1)
-r = np.arange(0, prm.R + dr/2, dr)
-#nombre d'itérations en temps totales pour le probleme transitoire
-Niter_t = int(prm.annee*365/prm.nb_jours_dt)
 
-t, rf = sp.symbols('t rf')
+# Variables symboliques pour Sympy
+t, r = sp.symbols('t r')
 
-vecteur_t = np.linspace(0, Niter_t*prm.dt, Niter_t)
+# Solution analytique choisie (fonction sinus)
+C_sy = sp.sin(4*r)*sp.exp(-10**-3*t)
 
-# %% STATIONNAIRE SANS TERME SOURCE
-# solution numérique et calcul de l'ordre de convergence
-C_o1 = fct.resolution_EDP_ordre_1(N, r, prm)
-p_L2_o1, L1_o1, L2_o1, DR_o1, Linf_o1 = fct.ordre_convergence(fct.resolution_EDP_ordre_1, prm)
-print(f"l'odre de l'erreur avec la norme L2 pour le schema d'ordre 1 est p = {p_L2_o1}")
+# Définition de l'équation différentielle pour la MMS
+S_sy = sp.diff(C_sy, t) - prm.Deff*1/r*sp.diff(r*sp.diff(C_sy, r), r) + prm.k*C_sy
 
-C_o2 = fct.resolution_EDP_ordre_2(N, r, prm)
-p_L2_o2, L1_o2, L2_o2, DR_o2, Linf_o2 = fct.ordre_convergence(fct.resolution_EDP_ordre_2, prm)
-print(f"l'odre de l'erreur avec la norme L2 pour le schema d'ordre 2 est p = {p_L2_o2}")
+# Conversion des solutions symboliques en fonctions numériques
+S = sp.lambdify([t,r], S_sy, "numpy")
+C_f = sp.lambdify([t,r], C_sy, "numpy")
 
-# solution analytique
-ra, Ca = fct.fonc_an(200, prm)
+# Conditions aux limites
+Neu = sp.lambdify(t, sp.diff(C_sy, r).subs(r, 0), "numpy")  # Neumann à r=0
+Dir = sp.lambdify(t, C_sy.subs(r, prm.R), "numpy")  # Dirichlet à r=R
 
-# graph sol analytique et numérique pour l'ordre 1
-plt.plot(r, C_o1, "ro", label=f"Solution numérique avec {N} points")
-plt.plot(ra, Ca, label="Solution analytique")
+# Résolution numérique avec la MMS
+C_MMS = resolution_EDP_ordre_2_MMS(prm, S, C_f, Neu, Dir)
+
+# Discrétisation de l'espace pour la solution MMS
+r_vals = np.linspace(0, prm.R, prm.N)
+
+# Graphique : solution MMS pour différents instants
+t_v = np.array([1,100,200,300, 500, 1000])
+for ti in t_v:
+    # Calcul des valeurs de la solution analytique pour chaque r
+    C_ref = [C_sy.subs({t: ti, r: rv, prm.Deff: prm.Deff}).evalf() for rv in r_vals]
+    plt.plot(r_vals, C_ref, "-", label=f"t = {ti} s")
+
 plt.xlabel("r [m]")
 plt.ylabel("concentration en sel [mol/m^3]")
-plt.title("Évolution de la concentration en sel selon la position radiale du cylindre \n schéma d'ordre 1")
+# plt.title("profil de concentration chosit pour la MMS")
 plt.grid("on")
 plt.legend()
 plt.show()
 
-# graph des normes L1 et L2 des erreurs pour l'ordre 1
-fct.graph_convergence_polyfit(DR_o1, L1_o1, L2_o1, Linf_o1, "Norme des erreurs en espace pour le schéma d'ordre 1", 'Taille de maille $Δr$ (m)')
+# Graphique : terme source MMS pour différents instants
+t_v = np.array([1,100,400,1000])
+r_vals = r_vals[1:]  # Enlève le premier point pour éviter la singularité à r=0
+for ti in t_v:
+    # Calcul des valeurs du terme source S pour chaque r
+    S_ref = [S_sy.subs({t: ti, r: rv, prm.Deff: prm.Deff}).evalf() for rv in r_vals]
+    plt.plot(r_vals, S_ref, "-", label=f"à t = {ti} s")
 
-# ------------partie E (même calcul avec un ordre 2)------------#
-
-# graph sol analytique et numérique ordre 1 et 2
-# plt.plot(r, C_o1, "bo", label=f"schéma ordre 1 avec {N} points")
-plt.plot(r, C_o2, "ro", label=f"schéma ordre 2 avec {N} points")
-plt.plot(ra, Ca, label="solution analytique")
 plt.xlabel("r [m]")
-plt.ylabel("concentration en sel [mol/m^3]")
-plt.title("Évolution de la concentration en sel selon la position radiale du cylindre")
+plt.ylabel("terme source MMS [mol/(s.m^3)]")
 plt.grid("on")
 plt.legend()
 plt.show()
 
-# graph des normes L1 et L2 des erreurs pour l'ordre 2
-fct.graph_convergence(DR_o2, L1_o2, L2_o2, Linf_o2, "Norme des erreurs en espace pour le schéma d'ordre 2", 'Taille de maille $Δr$ (m)')
 
-# %%
-cond_init = np.zeros(N)
-cond_init[-1] = prm.Ce
 
-source_1 = sp.lambdify([t, rf], 0, "numpy")
+# %% ÉTUDE DE CONVERGENCE EN ESPACE
 
-C_imp = fct.euler_imp(N, r, Niter_t, prm.dt, prm,cond_init, np.zeros(Niter_t) , np.repeat(prm.Ce, Niter_t), source_1)
+Ne = np.linspace(5, 1000, 15, dtype=int)
 
-plot_points = np.linspace(int(Niter_t/6), int(5*Niter_t/6)-1, 5, dtype=int)
-for i in plot_points:
-    jours = prm.dt/(3600*24)
-    plt.plot(r, C_imp[i,:], label=f"{round(i*jours/365)} ans" )
+L1 = np.zeros(len(Ne))
+L2 = np.zeros(len(Ne))
+Linf = np.zeros(len(Ne))
+DR = np.zeros(len(Ne))
 
-plt.plot(r, C_imp[-1,:], label=f"{round(Niter_t*prm.dt/(3600*24*365))} ans" )
-plt.title("Concentration en sel selon le temps écoulé")
-plt.xlabel("r (m)")
-plt.ylabel("C (mmol/m^3)")
-plt.legend()
-plt.show()
-# %%
-# %%
+for k in range(len(Ne)):
+    L1[k], L2[k], Linf[k], DR[k] = calcul_erreur_espace(Ne[k], prm, S, 
+                                                        C_f, Neu, Dir)
+    
 
-C_sy = sp.exp(7*rf)*sp.exp(-10**-10*t)
+p_L2 = np.log(L2[-1]/L2[-2])/np.log(DR[-1]/DR[-2])
+print(f"l'odre de l'erreur avec la norme L2 en spatial est p = {p_L2}")
 
-C_f = sp.lambdify([t, rf], C_sy, 'numpy')
+plot_convergence(DR, L1, L2, Linf, p_L2, 
+                 xlabel='Taille de maille $Δr$ (m)', 
+                 ylabel='Erreur $L_1$, $L_2$ et $L_inf$  (mol/m^3)', 
+                 title="Norme des erreurs en fonction de $Δr$")
+ 
+# %% ÉTUDE DE CONVERGENCE EN TEMPS
 
-C_MMS, erreurs = fct.MMS_euler_imp(C_sy, prm, vecteur_t, r, N, Niter_t, prm.dt)
+Nt = np.linspace(5, 800, 15, dtype=int)
 
-plt.plot(r, C_f(vecteur_t[-1], r), label="Solution manufacturée")
-plt.plot(r, C_MMS[-1,:], label="Solution numérique")
-plt.title("Solution manufacturée et la solution de la MMS associée")
-plt.xlabel("r (m)")
-plt.ylabel("C (mmol/m^3)")
-plt.legend()
-plt.show()
+L1 = np.zeros(len(Nt))
+L2 = np.zeros(len(Nt))
+Linf = np.zeros(len(Nt))
+Dt = np.zeros(len(Nt))
 
-# %%
-dt = 1e-16
-Niter_t = 50
-vecteur_t = np.linspace(0, Niter_t*dt, Niter_t)
-conv_espace = fct.ordre_convergence_espace(Niter_t, vecteur_t, dt, prm, C_sy)
+for k in range(len(Nt)):
+    L1[k], L2[k], Linf[k], Dt[k] = calcul_erreur_temps(Nt[k], prm, S, 
+                                                       C_f, Neu, Dir)
+    
 
-fct.graph_convergence_polyfit(conv_espace[3], conv_espace[1], conv_espace[2], conv_espace[4], f'Norme des erreurs en espace utilisant la MMS \n $\Delta t$ = {dt} s', 'Taille de maille $Δr$ (m)')
+p_L2 = np.log(L2[-1]/L2[0])/np.log(Dt[-1]/Dt[0])
+print(f"l'odre de l'erreur avec la norme L2 en temps est p = {p_L2}")
 
-print(conv_espace[0])
-
-# %%
-N = 4000
-dr = prm.R / (N - 1)
-r = np.arange(0, prm.R + dr/2, dr)
-conv_temps = fct.ordre_convergence_temps(N, r, prm, C_sy)
-fct.graph_convergence_polyfit(conv_temps[3], conv_temps[1], conv_temps[2], conv_temps[4],f'Norme des erreurs en temps utilisant la MMS \n $\Delta r$ = {dr} m', 'Interval temporel (s)')
-
-print(conv_temps[0])
-# %%
-
-# %%
-
-# pytest.main(['-q', '--tb=long', 'corr.py'])
+plot_convergence(Dt, L1, L2, Linf, p_L2, 
+                 xlabel='Pas de temps $Δt$ (m)', 
+                 ylabel='Erreur $L_1$, $L_2$ et $L_inf$  (mol/m^3)', 
+                 title="Norme des erreurs en fonction de $Δt$")
